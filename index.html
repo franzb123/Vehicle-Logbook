@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <title>Vehicle Logbook</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <style>
+        /* iOS-specific styles */
+        input, select {
+            -webkit-appearance: none;
+            border-radius: 8px;
+            font-size: 16px; /* Prevents iOS zoom */
+        }
+        /* Prevent elastic scrolling */
+        html, body {
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            overscroll-behavior: none;
+        }
+        #app {
+            overflow-y: auto;
+            height: 100%;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 120px; /* Space for floating buttons */
+        }
+        /* Save to home screen prompt */
+        .install-prompt {
+            display: none;
+            background: #2563eb;
+            color: white;
+            text-align: center;
+            padding: 1rem;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+        .standalone .install-prompt {
+            display: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div id="app"></div>
+    <div class="install-prompt">
+        Tap the share button below and select "Add to Home Screen" to install this app
+    </div>
+
+    <script>
+        // Check if running as standalone app
+        if (window.navigator.standalone) {
+            document.body.classList.add('standalone');
+        }
+
+        const App = () => {
+            const [trips, setTrips] = React.useState(() => {
+                const saved = localStorage.getItem('trips');
+                return saved ? JSON.parse(saved) : [];
+            });
+            const [currentMonth, setCurrentMonth] = React.useState(1);
+            const [vehicleDetails, setVehicleDetails] = React.useState(() => {
+                const saved = localStorage.getItem('vehicleDetails');
+                return saved ? JSON.parse(saved) : {
+                    businessName: '',
+                    makeModel: '',
+                    registration: ''
+                };
+            });
+
+            // Save data to localStorage when it changes
+            React.useEffect(() => {
+                localStorage.setItem('trips', JSON.stringify(trips));
+            }, [trips]);
+
+            React.useEffect(() => {
+                localStorage.setItem('vehicleDetails', JSON.stringify(vehicleDetails));
+            }, [vehicleDetails]);
+
+            const addTrip = () => {
+                const newTrip = {
+                    id: Date.now(),
+                    month: currentMonth,
+                    date: new Date().toISOString().split('T')[0],
+                    startLocation: '',
+                    destination: '',
+                    purpose: '',
+                    startOdo: '',
+                    endOdo: '',
+                    totalKm: 0,
+                    businessKm: 0
+                };
+                setTrips([...trips, newTrip]);
+            };
+
+            const updateTrip = (id, field, value) => {
+                setTrips(trips.map(trip => {
+                    if (trip.id === id) {
+                        const updatedTrip = { ...trip, [field]: value };
+                        if (field === 'startOdo' || field === 'endOdo') {
+                            if (updatedTrip.startOdo && updatedTrip.endOdo) {
+                                updatedTrip.totalKm = Number(updatedTrip.endOdo) - Number(updatedTrip.startOdo);
+                            }
+                        }
+                        return updatedTrip;
+                    }
+                    return trip;
+                }));
+            };
+
+            const calculateSummary = () => {
+                const summary = trips.reduce((acc, trip) => {
+                    acc.totalKm += Number(trip.totalKm) || 0;
+                    acc.businessKm += Number(trip.businessKm) || 0;
+                    return acc;
+                }, { totalKm: 0, businessKm: 0 });
+                
+                summary.businessUsePercentage = summary.totalKm ? 
+                    ((summary.businessKm / summary.totalKm) * 100).toFixed(1) : 0;
+                
+                return summary;
+            };
+
+            return React.createElement('div', { className: 'p-4' },
+                // Vehicle Details Section
+                React.createElement('div', { className: 'bg-white rounded-lg shadow p-4 mb-6' },
+                    React.createElement('h2', { className: 'text-lg font-semibold mb-3' }, 'Vehicle Details'),
+                    React.createElement('input', {
+                        type: 'text',
+                        placeholder: 'Business Name',
+                        className: 'w-full mb-2 p-2 border rounded',
+                        value: vehicleDetails.businessName,
+                        onChange: (e) => setVehicleDetails({...vehicleDetails, businessName: e.target.value})
+                    }),
+                    React.createElement('input', {
+                        type: 'text',
+                        placeholder: 'Make and Model',
+                        className: 'w-full mb-2 p-2 border rounded',
+                        value: vehicleDetails.makeModel,
+                        onChange: (e) => setVehicleDetails({...vehicleDetails, makeModel: e.target.value})
+                    }),
+                    React.createElement('input', {
+                        type: 'text',
+                        placeholder: 'Registration',
+                        className: 'w-full mb-2 p-2 border rounded',
+                        value: vehicleDetails.registration,
+                        onChange: (e) => setVehicleDetails({...vehicleDetails, registration: e.target.value})
+                    })
+                ),
+
+                // Month Selector
+                React.createElement('div', { className: 'flex gap-2 mb-4' },
+                    [1, 2, 3].map(month => 
+                        React.createElement('button', {
+                            key: month,
+                            className: `flex-1 p-2 rounded ${currentMonth === month ? 'bg-blue-500 text-white' : 'bg-gray-200'}`,
+                            onClick: () => setCurrentMonth(month)
+                        }, `Month ${month}`)
+                    )
+                ),
+
+                // Trip Entries
+                trips
+                    .filter(trip => trip.month === currentMonth)
+                    .map(trip => 
+                        React.createElement('div', { key: trip.id, className: 'bg-white rounded-lg shadow p-4 mb-4' },
+                            React.createElement('input', {
+                                type: 'date',
+                                className: 'w-full mb-2 p-2 border rounded',
+                                value: trip.date,
+                                onChange: (e) => updateTrip(trip.id, 'date', e.target.value)
+                            }),
+                            React.createElement('input', {
+                                type: 'text',
+                                placeholder: 'Start Location',
+                                className: 'w-full mb-2 p-2 border rounded',
+                                value: trip.startLocation,
+                                onChange: (e) => updateTrip(trip.id, 'startLocation', e.target.value)
+                            }),
+                            React.createElement('input', {
+                                type: 'text',
+                                placeholder: 'Destination',
+                                className: 'w-full mb-2 p-2 border rounded',
+                                value: trip.destination,
+                                onChange: (e) => updateTrip(trip.id, 'destination', e.target.value)
+                            }),
+                            React.createElement('select', {
+                                className: 'w-full mb-2 p-2 border rounded',
+                                value: trip.purpose,
+                                onChange: (e) => updateTrip(trip.id, 'purpose', e.target.value)
+                            },
+                                React.createElement('option', { value: '' }, 'Select Purpose'),
+                                React.createElement('option', { value: 'Site Visit' }, 'Site Visit'),
+                                React.createElement('option', { value: 'Material Pickup' }, 'Material Pickup'),
+                                React.createElement('option', { value: 'Client Meeting' }, 'Client Meeting'),
+                                React.createElement('option', { value: 'Supply Shop' }, 'Supply Shop'),
+                                React.createElement('option', { value: 'Council Meeting' }, 'Council Meeting'),
+                                React.createElement('option', { value: 'Other' }, 'Other')
+                            ),
+                            React.createElement('div', { className: 'grid grid-cols-2 gap-2' },
+                                React.createElement('input', {
+                                    type: 'number',
+                                    placeholder: 'Start Odo',
+                                    className: 'p-2 border rounded',
+                                    value: trip.startOdo,
+                                    onChange: (e) => updateTrip(trip.id, 'startOdo', e.target.value)
+                                }),
+                                React.createElement('input', {
+                                    type: 'number',
+                                    placeholder: 'End Odo',
+                                    className: 'p-2 border rounded',
+                                    value: trip.endOdo,
+                                    onChange: (e) => updateTrip(trip.id, 'endOdo', e.target.value)
+                                })
+                            ),
+                            React.createElement('div', { className: 'grid grid-cols-2 gap-2 mt-2' },
+                                React.createElement('div', { className: 'text-sm' }, `Total: ${trip.totalKm}km`),
+                                React.createElement('input', {
+                                    type: 'number',
+                                    placeholder: 'Business KM',
+                                    className: 'p-2 border rounded',
+                                    value: trip.businessKm,
+                                    onChange: (e) => updateTrip(trip.id, 'businessKm', e.target.value)
+                                })
+                            )
+                        )
+                    ),
+
+                // Add Trip Button
+                React.createElement('button', {
+                    className: 'fixed bottom-20 right-4 w-14 h-14 bg-blue-500 text-white rounded-full shadow-lg flex items-center justify-center',
+                    onClick: addTrip
+                }, '+'),
+
+                // Summary Button
+                React.createElement('div', { className: 'fixed bottom-4 left-4 right-4' },
+                    React.createElement('button', {
+                        className: 'w-full bg-green-500 text-white p-4 rounded-lg shadow-lg',
+                        onClick: () => {
+                            const summary = calculateSummary();
+                            alert(
+                                `Summary:\n` +
+                                `Total KM: ${summary.totalKm}\n` +
+                                `Business KM: ${summary.businessKm}\n` +
+                                `Business Use: ${summary.businessUsePercentage}%`
+                            );
+                        }
+                    }, 'View Summary')
+                )
+            );
+        };
+
+        // Mount the app
+        ReactDOM.render(React.createElement(App), document.getElementById('app'));
+    </script>
+</body>
+</html>
